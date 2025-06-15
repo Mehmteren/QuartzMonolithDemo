@@ -1,11 +1,10 @@
-﻿using QuartzMonolithDemo.Models;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace QuartzMonolithDemo.Services.Interface
 {
     public interface ILogManager
     {
-        void WriteLog(LogEntry entry);
+        void WriteLog(string message);
         List<string> ReadLastLogs(int count = 10);
     }
 }

@@ -1,5 +1,4 @@
 ﻿using Quartz;
-using QuartzMonolithDemo.Models;
 using Microsoft.Extensions.Logging;
 using System.Threading.Tasks;
 using System;
@@ -25,22 +24,15 @@ namespace QuartzMonolithDemo.Jobs
         {
             try
             {
-                var logEntry = new LogEntry
-                {
-                    Timestamp = DateTime.UtcNow,
-                    InstanceName = Environment.MachineName,
-                    Message = "LogJob executed successfully"
-                };
+                string message = "LogJob executed successfully";
+                _logManager.WriteLog(message);
+                _logger.LogInformation("{Message} on {Instance}", message, Environment.MachineName);
 
-                _logManager.WriteLog(logEntry);
-                _logger.LogInformation("LogJob executed successfully on {Instance}", Environment.MachineName);
-
-                _jobMonitor.UpdateJobStatus(JOB_NAME, true, "LogJob executed and logged successfully");
+                _jobMonitor.UpdateJobStatus(JOB_NAME, true, message);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "LogJob execution failed on {Instance}", Environment.MachineName);
-
                 _jobMonitor.UpdateJobStatus(JOB_NAME, false, "LogJob execution failed", ex);
             }
 

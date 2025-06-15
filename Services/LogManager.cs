@@ -1,66 +1,52 @@
-﻿using QuartzMonolithDemo.Models;
-using Microsoft.Extensions.Logging;
-using System;
+﻿using Microsoft.Extensions.Logging;
+using QuartzMonolithDemo.Services.Interface;
 using System.Collections.Generic;
 using System.IO;
+using System;
 using System.Linq;
-using QuartzMonolithDemo.Services.Interface;
 
 namespace QuartzMonolithDemo.Services
 {
     public class LogManager : ILogManager
     {
-        private readonly string _logDirectory = "logs";
-        private readonly string _instanceName;
-        private readonly object _lockObject = new object();
+        private readonly string _logDir = "logs";
+        private readonly string _instance = Environment.MachineName;
+        private readonly object _lock = new();
         private readonly ILogger<LogManager> _logger;
 
         public LogManager(ILogger<LogManager> logger)
         {
             _logger = logger;
-            _instanceName = Environment.MachineName;
-            Directory.CreateDirectory(_logDirectory);
+            Directory.CreateDirectory(_logDir);
         }
 
-        public void WriteLog(LogEntry entry)
+        public void WriteLog(string message)
         {
             try
             {
-                string filePath = GetLogFilePath();
-                string logLine = $"[{entry.Timestamp:yyyy-MM-dd HH:mm:ss}] [{entry.InstanceName}] {entry.Message}";
-
-                lock (_lockObject)
+                var line = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] [{_instance}] {message}";
+                lock (_lock)
                 {
-                    File.AppendAllText(filePath, logLine + Environment.NewLine);
+                    File.AppendAllText(Path.Combine(_logDir, $"log-{_instance}.txt"), line + Environment.NewLine);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to write log entry");
+                _logger.LogError(ex, "Logging failed");
             }
         }
 
         public List<string> ReadLastLogs(int count = 10)
         {
-            try
-            {
-                string filePath = GetLogFilePath();
-                if (!File.Exists(filePath))
-                    return new List<string> { $"No log file found for instance {_instanceName}" };
+            var file = Path.Combine(_logDir, $"log-{_instance}.txt");
 
-                var lines = File.ReadAllLines(filePath);
-                return lines.Reverse().Take(count).ToList();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to read logs");
-                return new List<string> { $"Error reading logs: {ex.Message}" };
-            }
-        }
+            if (!File.Exists(file))
+                return new List<string> { "No logs found." };
 
-        private string GetLogFilePath()
-        {
-            return Path.Combine(_logDirectory, $"log-{_instanceName}.txt");
+            return File.ReadAllLines(file)
+                       .Reverse()
+                       .Take(count)
+                       .ToList();
         }
     }
 }

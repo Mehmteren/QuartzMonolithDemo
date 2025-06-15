@@ -5,8 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
 using QuartzMonolithDemo.Services;
-using QuartzMonolithDemo.Jobs;
 using QuartzMonolithDemo.Services.Interface;
+using QuartzMonolithDemo.Jobs;
 
 namespace QuartzMonolithDemo
 {
@@ -23,12 +23,15 @@ namespace QuartzMonolithDemo
         {
             services.AddControllers();
 
+            // Dependency Injection for services
             services.AddSingleton<ILogManager, LogManager>();
             services.AddSingleton<IJobMonitor, JobMonitorService>();
 
+            // Quartz job and scheduler
             services.AddTransient<LogJob>();
             services.AddHostedService<QuartzSchedulerService>();
 
+            // Swagger configuration
             services.AddSwaggerGen(c =>
             {
                 c.SwaggerDoc("v1", new OpenApiInfo

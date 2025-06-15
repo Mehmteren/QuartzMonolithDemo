@@ -1,107 +1,63 @@
-﻿using System;
-using System.Collections.Concurrent;
-using QuartzMonolithDemo.Models;
+﻿using Microsoft.Extensions.Logging;
 using QuartzMonolithDemo.Services.Interface;
-using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
+using System;
 
-namespace QuartzMonolithDemo.Services
+public class JobMonitorService : IJobMonitor
 {
-    public class JobMonitorService : IJobMonitor
+    private readonly ConcurrentDictionary<string, JobStatus> _jobStatuses = new();
+    private readonly ILogger<JobMonitorService> _logger;
+
+    public JobMonitorService(ILogger<JobMonitorService> logger) => _logger = logger;
+
+    public void UpdateJobStatus(string jobName, bool isSuccess, string message = null, Exception exception = null)
     {
-        private readonly ConcurrentDictionary<string, JobStatus> _jobStatuses = new();
-        private readonly ILogger<JobMonitorService> _logger;
-
-        public JobMonitorService(ILogger<JobMonitorService> logger)
+        var now = DateTime.UtcNow;
+        var status = new JobStatus
         {
-            _logger = logger;
-        }
+            JobName = jobName,
+            LastExecutionTime = now,
+            IsSuccess = isSuccess,
+            Message = message ?? (isSuccess ? "Success" : "Failure"),
+            Exception = exception?.Message,
+            InstanceName = Environment.MachineName,
+            ExecutionCount = (_jobStatuses.TryGetValue(jobName, out var old) ? old.ExecutionCount : 0) + 1
+        };
+        _jobStatuses.AddOrUpdate(jobName, status, (k, v) => status);
+    }
 
-        public void UpdateJobStatus(string jobName, bool isSuccess, string message = null, Exception exception = null)
+    public JobStatus GetJobStatusWithHealth(string jobName, int expectedIntervalSeconds = 10)
+    {
+        if (!_jobStatuses.TryGetValue(jobName, out var status))
         {
-            try
-            {
-                var currentStatus = GetJobStatus(jobName);
-                var status = new JobStatus
-                {
-                    JobName = jobName,
-                    LastExecutionTime = DateTime.UtcNow,
-                    IsSuccess = isSuccess,
-                    Message = message ?? (isSuccess ? "Executed successfully" : "Execution failed"),
-                    Exception = exception?.Message,
-                    InstanceName = Environment.MachineName,
-                    ExecutionCount = (currentStatus?.ExecutionCount ?? 0) + 1
-                };
-
-                _jobStatuses.AddOrUpdate(jobName, status, (key, oldValue) => status);
-                _logger.LogDebug("Job status updated for {JobName}: {IsSuccess}", jobName, isSuccess);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to update job status for {JobName}", jobName);
-            }
-        }
-
-        public JobHealthInfo GetJobHealth(string jobName, int expectedIntervalSeconds = 10)
-        {
-            var status = GetJobStatus(jobName);
-
-            if (status == null)
-            {
-                return new JobHealthInfo
-                {
-                    JobName = jobName,
-                    HealthStatus = "Unknown",
-                    IsHealthy = false,
-                    Message = "No execution records found",
-                    SecondsSinceLastRun = null
-                };
-            }
-
-            var secondsSinceLastRun = (int)(DateTime.UtcNow - status.LastExecutionTime).TotalSeconds;
-            var toleranceSeconds = expectedIntervalSeconds + 5;
-
-            string healthStatus;
-            bool isHealthy;
-            string message;
-
-            if (secondsSinceLastRun <= toleranceSeconds)
-            {
-                healthStatus = "Healthy";
-                isHealthy = true;
-                message = $"Running normally (last run: {secondsSinceLastRun}s ago)";
-            }
-            else if (secondsSinceLastRun <= toleranceSeconds * 2)
-            {
-                healthStatus = "Warning";
-                isHealthy = false;
-                message = $"Delayed execution (last run: {secondsSinceLastRun}s ago)";
-            }
-            else
-            {
-                healthStatus = "Critical";
-                isHealthy = false;
-                message = $"Job appears stopped (last run: {secondsSinceLastRun}s ago)";
-            }
-
-            return new JobHealthInfo
+            return new JobStatus
             {
                 JobName = jobName,
-                HealthStatus = healthStatus,
-                IsHealthy = isHealthy,
-                Message = message,
-                SecondsSinceLastRun = secondsSinceLastRun,
-                LastExecutionTime = status.LastExecutionTime,
-                LastSuccess = status.IsSuccess,
-                ExecutionCount = status.ExecutionCount,
-                InstanceName = status.InstanceName,
-                LastError = status.Exception
+                IsSuccess = false,
+                Message = "No record found",
+                HealthStatus = "Unknown",
+                IsHealthy = false
             };
         }
 
-        private JobStatus GetJobStatus(string jobName)
+        var seconds = (int)(DateTime.UtcNow - status.LastExecutionTime).TotalSeconds;
+        status.SecondsSinceLastRun = seconds;
+        if (seconds <= expectedIntervalSeconds + 5)
         {
-            _jobStatuses.TryGetValue(jobName, out var status);
-            return status;
+            status.HealthStatus = "Healthy";
+            status.IsHealthy = true;
         }
+        else if (seconds <= (expectedIntervalSeconds + 5) * 2)
+        {
+            status.HealthStatus = "Warning";
+            status.IsHealthy = false;
+        }
+        else
+        {
+            status.HealthStatus = "Critical";
+            status.IsHealthy = false;
+        }
+
+        return status;
     }
 }
